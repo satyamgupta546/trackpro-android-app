@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo // <--- ADDED THIS IMPORT
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
@@ -41,7 +42,18 @@ class LocationService : Service() {
             // Set start time if not already set
             if (serviceStartTime == 0L) serviceStartTime = System.currentTimeMillis()
 
-            startForeground(1, createNotification())
+            // === FIX FOR CRASH ON ANDROID 14+ (API 34/35/36) ===
+            // We must tell Android explicitly that this is a "Location" service
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                    1,
+                    createNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(1, createNotification())
+            }
+
             startLocationUpdates()
         } else if (intent?.action == "ACTION_STOP") {
             stopLocationUpdates()
@@ -90,7 +102,7 @@ class LocationService : Service() {
                 val currentLat = UserDataManager.currentLocation.value?.latitude ?: 0.0
                 val currentLng = UserDataManager.currentLocation.value?.longitude ?: 0.0
 
-                // === NEW CALCULATIONS ===
+                // === CALCULATIONS ===
                 val distString = calculateDistance(UserDataManager.routePoints)
                 val durString = calculateDuration()
 
@@ -139,12 +151,19 @@ class LocationService : Service() {
     }
 
     private fun createNotification(): Notification {
-        return NotificationCompat.Builder(this, "tracking_channel")
+        val builder = NotificationCompat.Builder(this, "tracking_channel")
             .setContentTitle("TrackMate Active")
             .setContentText("Tracking distance & time...")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
-            .build()
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+
+        // === CRITICAL FIX: Immediate display required for Foreground Services ===
+        if (Build.VERSION.SDK_INT >= 31) { // Android 12+
+            builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+
+        return builder.build()
     }
 
     private fun createNotificationChannel() {
@@ -158,7 +177,7 @@ class LocationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 }
 
-// === UPDATED DATA CLASS (Now includes distance & duration) ===
+// === UPDATED DATA CLASS ===
 @Serializable
 data class LiveLocationUpdate(
     val last_lat: Double,
