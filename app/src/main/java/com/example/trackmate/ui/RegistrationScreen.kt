@@ -31,7 +31,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.trackmate.SupabaseManager
+import com.example.trackmate.SupabaseClient
 import com.example.trackmate.UserDataManager
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
@@ -212,7 +212,12 @@ fun RegistrationScreen(onContinueClick: () -> Unit) {
                             isLoading = true
 
                             // 1. Save Local
-                            UserDataManager.saveUser(fullName, phone, email)
+                            UserDataManager.saveUser(
+                                id = UserDataManager.currentUserId, // <--- Correct ID
+                                name = fullName,
+                                phone = phone,
+                                email = email
+                            )
 
                             // 2. Cloud Save
                             scope.launch {
@@ -223,7 +228,7 @@ fun RegistrationScreen(onContinueClick: () -> Unit) {
                                         "status" to "Active",
                                         "phone" to phone // <--- ADD THIS LINE
                                     )
-                                    SupabaseManager.client.from("users").insert(userMap)
+                                    SupabaseClient.client.from("users").insert(userMap)
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                 } finally {

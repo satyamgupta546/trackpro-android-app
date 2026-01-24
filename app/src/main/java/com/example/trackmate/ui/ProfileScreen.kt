@@ -1,16 +1,14 @@
 package com.example.trackmate.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.BorderStroke // <--- FIXED: Added missing import
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.ExitToApp
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,147 +18,200 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.trackmate.SupabaseClient
 import com.example.trackmate.UserDataManager
-import com.example.trackmate.SupabaseManager
 import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-// === 🎨 UNIQUE COLORS FOR PROFILE ===
-private val ProfileDarkBg = Color(0xFF0B0E14)
-private val ProfileBlue = Color(0xFF3B82F6)
-private val ProfilePurple = Color(0xFF9333EA)
-private val ProfileRed = Color(0xFFEF4444)
-private val ProfileWhite = Color(0xFFFFFFFF)
-private val ProfileGray = Color(0xFF9CA3AF)
+// === UNIQUE COLORS FOR PROFILE ===
+private val ProfileDarkBg = Color(0xFF020817)
+private val ProfileCardBg = Color(0xFF1E293B)
+private val ProfileElectricBlue = Color(0xFF3B82F6)
+private val ProfileTextWhite = Color(0xFFF8FAFC)
+private val ProfileTextMuted = Color(0xFF94A3B8)
+private val ProfileDangerRed = Color(0xFFEF4444)
 
 @Composable
-fun ProfileScreen(
-    onBackClick: () -> Unit,
-    onLogoutClick: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
+fun ProfileScreen(onLogout: () -> Unit) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf(UserDataManager.getUserName() ?: "") }
-    var phone by remember { mutableStateOf(UserDataManager.getUserPhone() ?: "") }
-    var email by remember { mutableStateOf(UserDataManager.getUserEmail() ?: "") }
+    // State for Password Change Dialog
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
 
-    val isExistingUser = remember { !UserDataManager.getUserName().isNullOrBlank() }
-    val screenTitle = if (isExistingUser) "My Profile" else "Create Profile"
+    // User Data
+    val name = UserDataManager.getUserName() ?: "User"
+    val phone = UserDataManager.getUserPhone() ?: "No Phone"
+    val email = UserDataManager.getUserEmail() ?: "No Email"
 
-    Scaffold(
-        containerColor = ProfileDarkBg,
-        topBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBackClick) {
-                    Icon(Icons.Default.ArrowBack, "Back", tint = ProfileWhite)
-                }
-                Text(screenTitle, color = ProfileWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-            }
-        }
-    ) { padding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ProfileDarkBg)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // === MOVED DOWN ===
+        Spacer(modifier = Modifier.height(60.dp))
+
+        // === AVATAR ===
+        Box(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(24.dp)
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .size(100.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(ProfileElectricBlue, Color(0xFF6366F1)))),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.size(100.dp).clip(CircleShape).background(Brush.linearGradient(listOf(ProfileBlue, ProfilePurple))),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = name.take(2).uppercase(),
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ProfileWhite
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            DarkTextField(label = "Full Name", icon = Icons.Default.Person, value = name, onValueChange = { name = it }, readOnly = isExistingUser)
-            Spacer(modifier = Modifier.height(16.dp))
-            DarkTextField(label = "Phone Number", icon = Icons.Default.Phone, value = phone, onValueChange = { phone = it }, keyboardType = KeyboardType.Phone, readOnly = isExistingUser)
-            Spacer(modifier = Modifier.height(16.dp))
-            DarkTextField(label = "Email Address", icon = Icons.Default.Email, value = email, onValueChange = { email = it }, keyboardType = KeyboardType.Email, readOnly = false)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = {
-                    UserDataManager.saveUser(name, phone, email)
-                    scope.launch {
-                        try {
-                            val userMap = mapOf("name" to name, "email" to email, "status" to "Active")
-                            SupabaseManager.client.from("users").insert(userMap)
-                            Toast.makeText(context, "✅ Profile Updated!", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) { }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ProfileBlue),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("Update Profile", fontSize = 18.sp, color = ProfileWhite)
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            OutlinedButton(
-                onClick = onLogoutClick,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = ProfileRed),
-                border = BorderStroke(1.dp, ProfileRed),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Outlined.ExitToApp, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Logout", fontSize = 18.sp)
-            }
+            Text(
+                text = name.take(1).uppercase(),
+                fontSize = 40.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // === NAME & INFO ===
+        Text(text = name, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ProfileTextWhite)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = phone, fontSize = 16.sp, color = ProfileTextMuted)
+        Text(text = email, fontSize = 14.sp, color = ProfileTextMuted)
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // === ACTION BUTTONS ===
+
+        // 1. Change Password Button
+        ProfileButton(
+            text = "Change Password",
+            icon = Icons.Outlined.Lock,
+            color = ProfileElectricBlue,
+            onClick = { showPasswordDialog = true }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. Logout Button
+        ProfileButton(
+            text = "Logout",
+            icon = Icons.Outlined.Logout,
+            color = ProfileDangerRed,
+            onClick = {
+                UserDataManager.logout()
+                onLogout()
+            }
+        )
+    }
+
+    // === PASSWORD CHANGE DIALOG ===
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            containerColor = ProfileCardBg,
+            title = { Text("New Password", color = ProfileTextWhite) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { newPassword = it },
+                        label = { Text("New Password", color = ProfileTextMuted) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = ProfileTextWhite,
+                            unfocusedTextColor = ProfileTextWhite,
+                            focusedBorderColor = ProfileElectricBlue,
+                            unfocusedBorderColor = ProfileTextMuted
+                        ),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = { Text("Confirm Password", color = ProfileTextMuted) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = ProfileTextWhite,
+                            unfocusedTextColor = ProfileTextWhite,
+                            focusedBorderColor = ProfileElectricBlue,
+                            unfocusedBorderColor = ProfileTextMuted
+                        ),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newPassword.length < 6) {
+                            Toast.makeText(context, "Password too short (min 6)", Toast.LENGTH_SHORT).show()
+                        } else if (newPassword != confirmPassword) {
+                            Toast.makeText(context, "Passwords do not match", Toast.LENGTH_SHORT).show()
+                        } else {
+                            isSaving = true
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    // Update Supabase
+                                    SupabaseClient.client.from("app_users").update(
+                                        mapOf("password" to newPassword)
+                                    ) {
+                                        filter { eq("id", UserDataManager.currentUserId) }
+                                    }
+
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Password Updated!", Toast.LENGTH_SHORT).show()
+                                        showPasswordDialog = false
+                                        newPassword = ""
+                                        confirmPassword = ""
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProfileElectricBlue),
+                    enabled = !isSaving
+                ) {
+                    if (isSaving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    else Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("Cancel", color = ProfileTextMuted)
+                }
+            }
+        )
     }
 }
 
 @Composable
-fun DarkTextField(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    value: String,
-    onValueChange: (String) -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    readOnly: Boolean = false
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = { if (!readOnly) onValueChange(it) },
-        label = { Text(label, color = ProfileGray) },
-        leadingIcon = { Icon(icon, contentDescription = null, tint = if (readOnly) ProfileGray else ProfileBlue) },
-        modifier = Modifier.fillMaxWidth(),
+fun ProfileButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = color.copy(alpha = 0.15f)),
         shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = ProfileBlue,
-            unfocusedBorderColor = ProfileGray,
-            focusedTextColor = ProfileWhite,
-            unfocusedTextColor = ProfileWhite,
-            disabledTextColor = ProfileWhite,
-            disabledBorderColor = Color.DarkGray,
-            disabledContainerColor = Color(0xFF0F1216),
-            disabledLeadingIconColor = ProfileGray,
-            cursorColor = ProfileBlue,
-            focusedContainerColor = Color.Transparent,
-            unfocusedContainerColor = Color.Transparent
-        ),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
-        enabled = !readOnly
-    )
+        border = BorderStroke(1.dp, color.copy(alpha = 0.5f))
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Icon(icon, null, tint = color)
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(text, color = color, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
 }

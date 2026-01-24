@@ -1,266 +1,262 @@
 package com.example.trackmate.ui
 
 import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.trackmate.SupabaseClient
 import com.example.trackmate.UserDataManager
-import com.example.trackmate.SupabaseManager
+import com.example.trackmate.model.AppUser
 import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-// === 🎨 UNIQUE COLORS (Internal Fix Only) ===
-// These names are unique to this file so they won't conflict with other files
-private val LgnBg = Color(0xFF0B0E14)         // Deep Dark Background
-private val LgnInputBg = Color(0xFF151A21)    // Dark Input Field Background
-private val LgnBlue = Color(0xFF3B82F6)       // Primary Blue
-private val LgnTextWhite = Color(0xFFFFFFFF)
-private val LgnTextGray = Color(0xFF9CA3AF)
+// === UNIQUE COLORS ===
+private val LoginElectricBlue = Color(0xFF3B82F6)
+private val LoginDarkBg = Color(0xFF1E293B)
+private val LoginCardBg = Color(0xFF334155)
+private val LoginTextWhite = Color(0xFFF8FAFC)
+private val LoginDeepPurple = Color(0xFF6366F1)
+private val LoginTextMuted = Color(0xFF94A3B8)
 
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
+    var authMode by remember { mutableStateOf("choose") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
-
-    // State Variables
-    var fullName by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var referCode by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LgnBg)
-            .padding(24.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(40.dp))
+    // === STATE VARIABLES ===
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
 
-            // === 1. LOGO ICON ===
+    Box(modifier = Modifier.fillMaxSize().background(LoginDarkBg)) {
+        // Gradient Glows
+        Box(
+            modifier = Modifier.align(Alignment.TopStart).offset((-50).dp, (-50).dp).size(300.dp)
+                .background(Brush.radialGradient(listOf(LoginElectricBlue.copy(alpha = 0.2f), Color.Transparent)))
+        )
+        Box(
+            modifier = Modifier.align(Alignment.CenterEnd).offset(100.dp, 50.dp).size(300.dp)
+                .background(Brush.radialGradient(listOf(LoginDeepPurple.copy(alpha = 0.15f), Color.Transparent)))
+        )
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Logo
             Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .background(
-                        Brush.linearGradient(listOf(LgnBlue, Color(0xFF60A5FA))),
-                        RoundedCornerShape(16.dp)
-                    ),
+                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(20.dp))
+                    .background(Brush.linearGradient(listOf(LoginElectricBlue, LoginDeepPurple))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Navigation, // Paper plane / Navigation icon
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(30.dp)
-                )
+                Icon(Icons.Default.Navigation, null, tint = LoginTextWhite, modifier = Modifier.size(40.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // === 2. TITLE ===
-            Text(
-                text = "Location Tracker",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = LgnTextWhite
-            )
-            Text(
-                text = "Track your journeys in real-time",
-                fontSize = 14.sp,
-                color = LgnTextGray
-            )
-
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Location Tracker", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = LoginTextWhite)
+            Text("Track your journeys in real-time", fontSize = 14.sp, color = LoginTextMuted)
             Spacer(modifier = Modifier.height(40.dp))
 
-            // === 3. FORM SECTION ===
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Get Started",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LgnTextWhite
-                )
-                Text(
-                    text = "Enter your details to begin tracking",
-                    fontSize = 13.sp,
-                    color = LgnTextGray,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
+            // Card
+            AnimatedContent(targetState = authMode, label = "AuthAnimation") { mode ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = LoginCardBg),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        when (mode) {
+                            "choose" -> ChooseView({ authMode = "login" }, { authMode = "signup" })
+                            "login" -> LoginView(
+                                phone = phone, onPhoneChange = { phone = it },
+                                password = password, onPasswordChange = { password = it },
+                                isLoading = isLoading,
+                                onBack = { authMode = "choose" },
+                                onSubmit = {
+                                    if (phone.isBlank()) {
+                                        Toast.makeText(context, "Enter phone number", Toast.LENGTH_SHORT).show()
+                                        return@LoginView
+                                    }
+                                    isLoading = true
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val user = SupabaseClient.client.from("app_users").select {
+                                                filter {
+                                                    eq("phone", phone)
+                                                    eq("password", password)
+                                                }
+                                            }.decodeSingleOrNull<AppUser>()
 
-                // -- FULL NAME --
-                LoginInputField(
-                    label = "Full Name",
-                    value = fullName,
-                    onValueChange = { fullName = it },
-                    icon = Icons.Default.Person,
-                    placeholder = "Enter your full name"
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // -- EMAIL --
-                LoginInputField(
-                    label = "Email",
-                    value = email,
-                    onValueChange = { email = it },
-                    icon = Icons.Default.Email,
-                    placeholder = "Enter your email",
-                    keyboardType = KeyboardType.Email
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // -- PHONE NUMBER --
-                LoginInputField(
-                    label = "Phone Number",
-                    value = phone,
-                    onValueChange = { phone = it },
-                    icon = Icons.Default.Phone,
-                    placeholder = "+91 XXXXX XXXXX",
-                    keyboardType = KeyboardType.Phone
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // -- REFER CODE --
-                LoginInputField(
-                    label = "Refer Code",
-                    value = referCode,
-                    onValueChange = { referCode = it },
-                    icon = Icons.Outlined.CardGiftcard,
-                    placeholder = "ENTER REFERRAL CODE"
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // === 4. LOGIN BUTTON ===
-            Button(
-                onClick = {
-                    if (fullName.isEmpty() || email.isEmpty() || phone.isEmpty()) {
-                        Toast.makeText(context, "Please fill all required fields", Toast.LENGTH_SHORT).show()
-                    } else {
-                        isLoading = true
-                        scope.launch {
-                            try {
-                                // 1. Save Locally
-                                UserDataManager.saveUser(fullName, phone, email)
-
-                                // 2. Send to Supabase (Ignore if exists)
-                                try {
-                                    val userMap = mapOf(
-                                        "name" to fullName,
-                                        "email" to email,
-                                        "status" to "Active"
-                                        // "refer_code" to referCode (Add to DB later if needed)
-                                    )
-                                    SupabaseManager.client.from("users").insert(userMap)
-                                } catch (e: Exception) {
-                                    // User might already exist, safe to ignore
+                                            withContext(Dispatchers.Main) {
+                                                if (user != null) {
+                                                    UserDataManager.saveUser(user.id ?: 0, user.name, user.phone, user.email)
+                                                    onLoginSuccess()
+                                                } else {
+                                                    Toast.makeText(context, "Invalid credentials", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
+                                        } finally { isLoading = false }
+                                    }
                                 }
+                            )
+                            "signup" -> SignupView(
+                                name = name, onNameChange = { name = it },
+                                phone = phone, onPhoneChange = { phone = it },
+                                email = email, onEmailChange = { email = it },
+                                password = password, onPasswordChange = { password = it },
+                                isLoading = isLoading,
+                                onBack = { authMode = "choose" },
+                                onSubmit = {
+                                    if (name.isBlank() || phone.isBlank()) {
+                                        Toast.makeText(context, "Fill required fields", Toast.LENGTH_SHORT).show()
+                                        return@SignupView
+                                    }
+                                    isLoading = true
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val newUser = AppUser(name = name, phone = phone, email = email, password = password)
+                                            val savedUser = SupabaseClient.client.from("app_users").insert(newUser) { select() }.decodeSingle<AppUser>()
 
-                                Toast.makeText(context, "Welcome, $fullName!", Toast.LENGTH_SHORT).show()
-                                onLoginSuccess()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                            } finally {
-                                isLoading = false
-                            }
+                                            withContext(Dispatchers.Main) {
+                                                savedUser.id?.let {
+                                                    UserDataManager.saveUser(it, savedUser.name, savedUser.phone, savedUser.email)
+                                                    onLoginSuccess()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                // === FIX: Friendly Error Message ===
+                                                val errorMsg = e.message ?: ""
+                                                if (errorMsg.contains("duplicate key") || errorMsg.contains("unique constraint")) {
+                                                    Toast.makeText(context, "This phone is already registered. Please Login.", Toast.LENGTH_LONG).show()
+                                                    authMode = "login" // Switch them to login automatically
+                                                } else {
+                                                    Toast.makeText(context, "Registration Failed: $errorMsg", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } finally { isLoading = false }
+                                    }
+                                }
+                            )
                         }
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = LgnBlue),
-                shape = RoundedCornerShape(12.dp),
-                enabled = !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                } else {
-                    Text("Login", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // === 5. FOOTER ===
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.LocationOn, null, tint = LgnTextGray, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Location permission required for tracking", color = LgnTextGray, fontSize = 12.sp)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-// === CUSTOM INPUT FIELD COMPONENT (Matches Your Design) ===
+// === HELPER VIEWS ===
+
 @Composable
-fun LoginInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    placeholder: String,
-    keyboardType: KeyboardType = KeyboardType.Text
-) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = LgnBlue, modifier = Modifier.size(14.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(label, color = LgnTextWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            if (label != "Refer Code") {
-                Text(" *", color = Color.Red, fontSize = 14.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = { Text(placeholder, color = Color.Gray, fontSize = 14.sp) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = LgnInputBg,
-                unfocusedContainerColor = LgnInputBg,
-                disabledContainerColor = LgnInputBg,
-                focusedBorderColor = LgnBlue.copy(alpha = 0.5f),
-                unfocusedBorderColor = Color.Transparent, // No border when inactive, like screenshot
-                focusedTextColor = LgnTextWhite,
-                unfocusedTextColor = LgnTextWhite
-            ),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
-            singleLine = true
-        )
+fun ChooseView(onLoginClick: () -> Unit, onSignupClick: () -> Unit) {
+    Text("Welcome", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LoginTextWhite)
+    Text("Choose how you'd like to continue", fontSize = 14.sp, color = LoginTextMuted)
+    Spacer(modifier = Modifier.height(24.dp))
+    Button(onClick = onLoginClick, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = LoginElectricBlue), shape = RoundedCornerShape(12.dp)) {
+        Icon(Icons.Default.Login, null, tint = LoginTextWhite); Spacer(Modifier.width(8.dp)); Text("Login", fontSize = 16.sp, color = LoginTextWhite, fontWeight = FontWeight.SemiBold)
     }
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedButton(onClick = onSignupClick, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = LoginElectricBlue), border = BorderStroke(1.dp, LoginElectricBlue.copy(alpha = 0.5f)), shape = RoundedCornerShape(12.dp)) {
+        Icon(Icons.Outlined.PersonAdd, null); Spacer(Modifier.width(8.dp)); Text("Sign Up", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+fun LoginView(phone: String, onPhoneChange: (String) -> Unit, password: String, onPasswordChange: (String) -> Unit, isLoading: Boolean, onBack: () -> Unit, onSubmit: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = LoginTextMuted) }
+        Text("Login", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LoginTextWhite)
+    }
+    Spacer(modifier = Modifier.height(24.dp))
+    AuthInputField(value = phone, onValueChange = onPhoneChange, label = "Phone Number", icon = Icons.Default.Phone, isNumber = true)
+    Spacer(modifier = Modifier.height(16.dp))
+    AuthInputField(value = password, onValueChange = onPasswordChange, label = "Password", icon = Icons.Default.Lock, isPassword = true)
+    Spacer(modifier = Modifier.height(32.dp))
+    Button(onClick = onSubmit, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = LoginElectricBlue), shape = RoundedCornerShape(12.dp), enabled = !isLoading) {
+        if (isLoading) CircularProgressIndicator(color = LoginTextWhite, modifier = Modifier.size(24.dp)) else Text("Login", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = LoginTextWhite)
+    }
+}
+
+@Composable
+fun SignupView(name: String, onNameChange: (String) -> Unit, phone: String, onPhoneChange: (String) -> Unit, email: String, onEmailChange: (String) -> Unit, password: String, onPasswordChange: (String) -> Unit, isLoading: Boolean, onBack: () -> Unit, onSubmit: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = LoginTextMuted) }
+        Text("Create Account", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = LoginTextWhite)
+    }
+    Spacer(modifier = Modifier.height(24.dp))
+    AuthInputField(value = name, onValueChange = onNameChange, label = "Full Name", icon = Icons.Default.Person)
+    Spacer(modifier = Modifier.height(16.dp))
+    AuthInputField(value = phone, onValueChange = onPhoneChange, label = "Phone Number", icon = Icons.Default.Phone, isNumber = true)
+    Spacer(modifier = Modifier.height(16.dp))
+    AuthInputField(value = email, onValueChange = onEmailChange, label = "Email", icon = Icons.Default.Email)
+    Spacer(modifier = Modifier.height(16.dp))
+    AuthInputField(value = password, onValueChange = onPasswordChange, label = "Password", icon = Icons.Default.Lock, isPassword = true)
+    Spacer(modifier = Modifier.height(32.dp))
+    Button(onClick = onSubmit, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = LoginElectricBlue), shape = RoundedCornerShape(12.dp), enabled = !isLoading) {
+        if (isLoading) CircularProgressIndicator(color = LoginTextWhite, modifier = Modifier.size(24.dp)) else Text("Create Account", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = LoginTextWhite)
+    }
+}
+
+// === HELPER INPUT FIELD ===
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AuthInputField(
+    value: String, onValueChange: (String) -> Unit, label: String, icon: ImageVector,
+    isPassword: Boolean = false, isNumber: Boolean = false
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, color = LoginTextMuted) },
+        leadingIcon = { Icon(icon, null, tint = LoginElectricBlue) },
+        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = if (isNumber) KeyboardType.Phone else KeyboardType.Text),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            focusedIndicatorColor = LoginElectricBlue,
+            unfocusedIndicatorColor = Color.White.copy(alpha = 0.2f),
+            cursorColor = LoginElectricBlue,
+            focusedTextColor = LoginTextWhite,
+            unfocusedTextColor = LoginTextWhite,
+            focusedLabelColor = LoginTextMuted,
+            unfocusedLabelColor = LoginTextMuted
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        singleLine = true
+    )
 }

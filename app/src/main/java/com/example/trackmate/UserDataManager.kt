@@ -7,84 +7,110 @@ import androidx.compose.runtime.mutableStateOf
 import org.osmdroid.util.GeoPoint
 
 object UserDataManager {
-    private const val PREF_NAME = "TrackMatePrefs"
-    private const val KEY_IS_LOGGED_IN = "is_logged_in"
-    private const val KEY_USER_PHONE = "user_phone"
-    private const val KEY_USER_NAME = "user_name"
-    private const val KEY_USER_EMAIL = "user_email"
-    private const val KEY_TRIP_ACTIVE = "trip_active"
-    private const val KEY_ACTIVE_TRIP_ID = "active_trip_id"
-
+    private const val PREF_NAME = "trackmate_prefs"
     private lateinit var prefs: SharedPreferences
 
-    // Live State
-    var isTripActive = mutableStateOf(false)
-    var currentLocation = mutableStateOf<GeoPoint?>(null)
+    // === LIVE TRIP STATE ===
+    val isTripActive = mutableStateOf(false)
+    val routePoints = mutableStateListOf<GeoPoint>()
+    val currentLocation = mutableStateOf<GeoPoint?>(null)
 
-    // Live Route for Map
-    var routePoints = mutableStateListOf<GeoPoint>()
+    // === AUTH STATE ===
+    var currentUserId: Long = -1L
+        private set
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        isTripActive.value = prefs.getBoolean(KEY_TRIP_ACTIVE, false)
+        currentUserId = prefs.getLong("USER_ID", -1L)
+
+        // Restore active state if app was killed
+        if (activeTripId != -1L) {
+            isTripActive.value = true
+            restoreRouteLocally()
+        }
     }
 
-    // --- AUTHENTICATION ---
-    fun saveUser(name: String, phone: String, email: String) {
+    // === AUTH FUNCTIONS ===
+    fun saveUser(id: Long, name: String, phone: String, email: String) {
+        currentUserId = id
         prefs.edit().apply {
-            putBoolean(KEY_IS_LOGGED_IN, true)
-            putString(KEY_USER_PHONE, phone)
-            putString(KEY_USER_NAME, name)
-            putString(KEY_USER_EMAIL, email)
+            putLong("USER_ID", id)
+            putString("USER_NAME", name)
+            putString("USER_PHONE", phone)
+            putString("USER_EMAIL", email)
+            putBoolean("IS_LOGGED_IN", true)
             apply()
         }
     }
 
-    fun isUserLoggedIn(): Boolean = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
-    fun getUserPhone(): String? = prefs.getString(KEY_USER_PHONE, null)
-    fun getUserName(): String? = prefs.getString(KEY_USER_NAME, null)
-    fun getUserEmail(): String? = prefs.getString(KEY_USER_EMAIL, null)
+    fun isLoggedIn(): Boolean {
+        return prefs.getBoolean("IS_LOGGED_IN", false)
+    }
 
     fun logout() {
+        currentUserId = -1L
         prefs.edit().clear().apply()
-        isTripActive.value = false
         routePoints.clear()
-        currentLocation.value = null
+        isTripActive.value = false
     }
 
-    // --- TRIP MANAGEMENT ---
+    fun getUserPhone(): String? = prefs.getString("USER_PHONE", null)
+    fun getUserName(): String? = prefs.getString("USER_NAME", null)
+    fun getUserEmail(): String? = prefs.getString("USER_EMAIL", null)
 
-    fun setTripStatus(isActive: Boolean) {
-        isTripActive.value = isActive
-        prefs.edit().putBoolean(KEY_TRIP_ACTIVE, isActive).apply()
-        if (!isActive) routePoints.clear()
-    }
-
+    // === TRIP FUNCTIONS ===
     fun saveActiveTripId(id: Long) {
-        prefs.edit().putLong(KEY_ACTIVE_TRIP_ID, id).apply()
+        prefs.edit().putLong("ACTIVE_TRIP_ID", id).apply()
     }
 
-    fun getActiveTripId(): Long {
-        return prefs.getLong(KEY_ACTIVE_TRIP_ID, -1L)
+    val activeTripId: Long
+        get() = prefs.getLong("ACTIVE_TRIP_ID", -1L)
+
+    // **UPDATED**: Only toggle the boolean. DO NOT CLEAR DATA HERE.
+    fun setTripStatus(active: Boolean) {
+        isTripActive.value = active
+        // Logic change: We keep routePoints and currentLocation visible even after stop
+        // so the user can see where they just walked.
     }
 
-    // --- LIVE MAP DATA ---
+    // **NEW**: Call this ONLY when starting a brand new trip
+    fun clearNewTrip() {
+        routePoints.clear()
+        // We keep currentLocation so the map doesn't snap to (0,0)
+        prefs.edit().remove("SAVED_ROUTE_PATH").apply()
+    }
 
-    // 1. Updates the "Me" marker
     fun updateCurrentLocation(lat: Double, lng: Double) {
         currentLocation.value = GeoPoint(lat, lng)
     }
 
-    // 2. PRIMARY: Adds point using a GeoPoint object
-    fun addRoutePoint(point: GeoPoint) {
-        if (isTripActive.value) {
-            routePoints.add(point)
-        }
+    fun addRoutePoint(lat: Double, lng: Double) {
+        routePoints.add(GeoPoint(lat, lng))
+
+        // Save locally for crash safety
+        val oldString = prefs.getString("SAVED_ROUTE_PATH", "")
+        val newPoint = "$lat,$lng"
+        val newString = if (oldString.isNullOrEmpty()) newPoint else "$oldString;$newPoint"
+        prefs.edit().putString("SAVED_ROUTE_PATH", newString).apply()
     }
 
-    // === 3. THIS WAS MISSING! (The Helper Function) ===
-    // This allows you to send two numbers instead of a GeoPoint
-    fun addRoutePoint(lat: Double, lng: Double) {
-        addRoutePoint(GeoPoint(lat, lng))
+    private fun restoreRouteLocally() {
+        val savedString = prefs.getString("SAVED_ROUTE_PATH", "")
+        if (!savedString.isNullOrEmpty()) {
+            val pairs = savedString.split(";")
+            routePoints.clear()
+            pairs.forEach { pair ->
+                val parts = pair.split(",")
+                if (parts.size == 2) {
+                    try {
+                        val lat = parts[0].toDouble()
+                        val lng = parts[1].toDouble()
+                        routePoints.add(GeoPoint(lat, lng))
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
     }
 }

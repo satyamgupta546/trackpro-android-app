@@ -6,7 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import com.example.trackmate.SupabaseManager
+import com.example.trackmate.SupabaseClient
 import com.example.trackmate.UserDataManager
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
@@ -45,7 +45,7 @@ object LocationManager {
     }
 
     private fun sendLocationToSupabase(location: Location) {
-        val activeRowId = UserDataManager.getActiveTripId()
+        val activeRowId = UserDataManager.activeTripId
 
         if (activeRowId == -1L) {
             return
@@ -54,7 +54,7 @@ object LocationManager {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // 1. Fetch current path
-                val currentData = SupabaseManager.client.from("user_tracking")
+                val currentData = SupabaseClient.client.from("user_tracking")
                     .select(columns = Columns.list("route_path")) {
                         filter { eq("id", activeRowId) }
                     }.decodeSingleOrNull<TripPathUpdate>()
@@ -64,7 +64,7 @@ object LocationManager {
                 updatedPath.add(listOf(location.latitude, location.longitude))
 
                 // 3. Update Database
-                SupabaseManager.client.from("user_tracking").update(
+                SupabaseClient.client.from("user_tracking").update(
                     mapOf(
                         "last_lat" to location.latitude,
                         "last_lng" to location.longitude,
