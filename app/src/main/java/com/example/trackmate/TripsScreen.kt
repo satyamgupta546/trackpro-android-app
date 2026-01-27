@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.preference.PreferenceManager
 import android.util.Log
-import android.view.MotionEvent // Import for Touch Fix
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,8 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.InternalSerializationApi
-import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.ExperimentalSerializationApi // KEEP THIS
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -92,12 +91,14 @@ data class ZoneModel(
 data class UserTargetModel(val lat: Double, val lng: Double, val user_id: String?)
 
 @RequiresApi(Build.VERSION_CODES.O)
-@OptIn(InternalSerializationApi::class, ExperimentalSerializationApi::class)
+// === FIX: Use just this annotation for Compose functions using serialization ===
+@OptIn(ExperimentalSerializationApi::class)
 @Composable
 fun TripsScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // Init OSMDroid
     Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
 
     // === STATE ===
@@ -105,7 +106,7 @@ fun TripsScreen() {
     var isLoading by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(LocalDate.now(IndiaZone)) }
 
-    // Map Data
+    // Task & Map Data State
     var assignedZonePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
     var assignedTargetLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var targetKm by remember { mutableStateOf(0.0) }
@@ -178,7 +179,10 @@ fun TripsScreen() {
         scope.launch(Dispatchers.IO) {
             try {
                 val userId = UserDataManager.currentUserId ?: return@launch
-                val targets = SupabaseClient.client.from("user_targets").select { filter { eq("user_id", userId) } }.decodeList<UserTargetModel>()
+
+                val targets = SupabaseClient.client.from("user_targets")
+                    .select { filter { eq("user_id", userId) } }
+                    .decodeList<UserTargetModel>()
                 assignedTargetLocation = targets.firstOrNull()?.let { GeoPoint(it.lat, it.lng) }
 
                 val zones = SupabaseClient.client.from("zones").select().decodeList<ZoneModel>()
@@ -206,6 +210,7 @@ fun TripsScreen() {
     LaunchedEffect(selectedDate) {
         tripsList = emptyList()
         fetchTripsForDate(selectedDate, { tripsList = it }, { calculatedTotalKm = it })
+
         while(true) {
             delay(5000)
             fetchTripsForDate(selectedDate, { tripsList = it }, { calculatedTotalKm = it })
@@ -215,18 +220,15 @@ fun TripsScreen() {
 
     // === UI: FULL PAGE SCROLL ===
     Scaffold(containerColor = TripsDarkBg) { padding ->
-        // Changed from Column to LazyColumn so the whole page scrolls
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize(),
             contentPadding = PaddingValues(16.dp)
         ) {
-
-            // --- SECTION 1: HEADER, MAP, BUTTONS (Scrollable now) ---
+            // HEADER + MAP + BUTTONS
             item {
                 Column {
-                    // Header
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -252,7 +254,6 @@ fun TripsScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Map
                     Card(
                         colors = CardDefaults.cardColors(containerColor = TripsCardBg),
                         shape = RoundedCornerShape(16.dp),
@@ -268,9 +269,8 @@ fun TripsScreen() {
                                         controller.setZoom(15.0)
                                         mapController = controller
 
-                                        // === FIX: ALLOW MAP PANNING INSIDE SCROLLVIEW ===
+                                        // ALLOW PANNING
                                         setOnTouchListener { v, event ->
-                                            // Disallow parent (LazyColumn) from intercepting touch events
                                             v.parent.requestDisallowInterceptTouchEvent(true)
                                             if (event.action == MotionEvent.ACTION_UP) {
                                                 v.parent.requestDisallowInterceptTouchEvent(false)
@@ -281,7 +281,6 @@ fun TripsScreen() {
                                 },
                                 update = { mapView ->
                                     mapView.overlays.clear()
-                                    // ... Polygons & Markers ...
                                     if (hasActiveGoal && assignedZonePoints.isNotEmpty()) {
                                         val polygon = Polygon()
                                         polygon.points = assignedZonePoints
@@ -348,7 +347,6 @@ fun TripsScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Buttons
                     val isToday = selectedDate == LocalDate.now(IndiaZone)
                     Button(
                         onClick = {
@@ -380,7 +378,6 @@ fun TripsScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Goal Card
                     if (hasActiveGoal && targetKm > 0) {
                         TaskProgressCard(
                             coveredKm = calculatedTotalKm,
@@ -401,7 +398,7 @@ fun TripsScreen() {
                 }
             }
 
-            // --- SECTION 2: TRIP LIST ---
+            // --- SECTION 2: LIST ---
             if (isLoading && tripsList.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
@@ -424,8 +421,7 @@ fun TripsScreen() {
     }
 }
 
-// ... (KEEP HELPER FUNCTIONS: calculateRealDistance, fetchTripsForDate, etc. EXACTLY AS BEFORE) ...
-// (I will paste them below for completeness if you need to copy the FULL file)
+// === HELPERS ===
 
 fun calculateRealDistance(routePath: List<List<Double>>?): Double {
     if (routePath.isNullOrEmpty() || routePath.size < 2) return 0.0
@@ -497,7 +493,11 @@ fun TaskProgressCard(coveredKm: Double, targetKm: Double, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Daily Goal $emoji", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    text = "Daily Goal $emoji",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
                 Text(text = "$percentage% (${String.format("%.2f", coveredKm)} / ${targetKm.toInt()} km)", color = TripsGray, fontSize = 12.sp)
             }
             Spacer(modifier = Modifier.height(10.dp))

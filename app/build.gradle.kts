@@ -7,13 +7,11 @@ plugins {
 
 android {
     namespace = "com.example.trackmate"
-    // CHANGED: Use 35 (Android 15 Stable) instead of 36 (Android 16 Preview) to stop crashes
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.trackmate"
         minSdk = 26
-        // CHANGED: Match compileSdk
         targetSdk = 35
         versionCode = 1
         versionName = "2.0"
@@ -31,26 +29,29 @@ android {
         }
     }
 
-    // JAVA 17 CONFIGURATION (This is what you likely meant by "Update with 17")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // === CRITICAL FIX IS HERE ===
     buildFeatures {
         compose = true
+        buildConfig = true  // <--- THIS LINE FIXES YOUR ERROR
     }
 }
 
 dependencies {
-    // 1. Core Android & Compose (UPDATED to fix crashes on newer Android)
+    // 1. Core Android & Compose
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
 
-    // IMPORTANT: Updated BOM to 2024 version to support Android 15/16
+    // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -60,7 +61,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
 
     // 3. FREE MAPS (OpenStreetMap)
-    implementation("org.osmdroid:osmdroid-android:6.1.18") // Updated
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
     implementation("androidx.compose.ui:ui-viewbinding:1.6.8")
 
     // 4. Location Services
